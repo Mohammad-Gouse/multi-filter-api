@@ -17,17 +17,27 @@ const pool = new Pool({
 app.use(cors());
 app.use(express.json());
 
-// Endpoint to fetch employees by id with pagination and search filter
-app.get('/api/employees/id', async (req, res) => {
-  const { search = '', page = 1, limit = 10 } = req.query;
+
+// Validate column name to prevent SQL injection
+const validColumns = ['id', 'name', 'salary', 'age'];
+
+const isValidColumn = (column) => validColumns.includes(column);
+
+// Endpoint to fetch autocomplete suggestions dynamically
+app.get('/api/employees/list', async (req, res) => {
+  const { column = 'name', search = '', page = 1, limit = 10 } = req.query;
+
+  if (!isValidColumn(column)) {
+    return res.status(400).send('Invalid column name');
+  }
 
   try {
     const offset = (page - 1) * limit;
     const query = `
-      SELECT id
+      SELECT DISTINCT ${column}
       FROM employees
-      WHERE id::text ILIKE $1
-      ORDER BY id
+      WHERE ${column}::text ILIKE $1
+      ORDER BY ${column}
       LIMIT $2 OFFSET $3;
     `;
     const values = [`%${search}%`, parseInt(limit, 10), parseInt(offset, 10)];
@@ -40,74 +50,6 @@ app.get('/api/employees/id', async (req, res) => {
   }
 });
 
-// Endpoint to fetch employees by name with pagination and search filter
-app.get('/api/employees/name', async (req, res) => {
-  const { search = '', page = 1, limit = 10 } = req.query;
-
-  try {
-    const offset = (page - 1) * limit;
-    const query = `
-      SELECT DISTINCT name
-      FROM employees
-      WHERE name ILIKE $1
-      ORDER BY name
-      LIMIT $2 OFFSET $3;
-    `;
-    const values = [`%${search}%`, parseInt(limit, 10), parseInt(offset, 10)];
-
-    const { rows } = await pool.query(query, values);
-    res.json(rows);
-  } catch (error) {
-    console.error('Error fetching data:', error);
-    res.status(500).send('Server error');
-  }
-});
-
-// Endpoint to fetch employees by salary with pagination and search filter
-app.get('/api/employees/salary', async (req, res) => {
-  const { search = '', page = 1, limit = 10 } = req.query;
-
-  try {
-    const offset = (page - 1) * limit;
-    const query = `
-      SELECT DISTINCT salary
-      FROM employees
-      WHERE salary::text ILIKE $1
-      ORDER BY salary
-      LIMIT $2 OFFSET $3;
-    `;
-    const values = [`%${search}%`, parseInt(limit, 10), parseInt(offset, 10)];
-
-    const { rows } = await pool.query(query, values);
-    res.json(rows);
-  } catch (error) {
-    console.error('Error fetching data:', error);
-    res.status(500).send('Server error');
-  }
-});
-
-// Endpoint to fetch employees by age with pagination and search filter
-app.get('/api/employees/age', async (req, res) => {
-  const { search = '', page = 1, limit = 10 } = req.query;
-
-  try {
-    const offset = (page - 1) * limit;
-    const query = `
-      SELECT DISTINCT age
-      FROM employees
-      WHERE age::text ILIKE $1
-      ORDER BY age
-      LIMIT $2 OFFSET $3;
-    `;
-    const values = [`%${search}%`, parseInt(limit, 10), parseInt(offset, 10)];
-
-    const { rows } = await pool.query(query, values);
-    res.json(rows);
-  } catch (error) {
-    console.error('Error fetching data:', error);
-    res.status(500).send('Server error');
-  }
-});
 
 const buildFilterQuery = (filters, operator) => {
   const filterConditions = [];
