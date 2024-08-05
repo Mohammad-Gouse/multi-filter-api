@@ -10,7 +10,7 @@ const pool = new Pool({
   user: 'postgres',
   host: 'localhost',
   database: 'postgres',
-  password: 'postgres',
+  password: 'root',
   port: 5432,
 });
 
@@ -136,28 +136,31 @@ app.post('/api/employees', async (req, res) => {
     const filterOperator = operator.toUpperCase() === 'AND' ? 'AND' : 'OR';
     const { filterQuery, values } = buildFilterQuery(filters, filterOperator);
 
-    // Combined query to fetch data and count total rows
-    const query = `
-      WITH filtered_employees AS (
-        SELECT id, name, salary, age
-        FROM employees
-        ${filterQuery}
-      ),
-      total_employees AS (
-        SELECT COUNT(*) AS total
-        FROM employees
-      )
-      SELECT (SELECT total FROM total_employees) AS total_count,
-             fe.id, fe.name, fe.salary, fe.age
-      FROM filtered_employees fe
-      ORDER BY fe.id
+    // Separate queries to fetch data and count total filtered rows
+    const countQuery = `
+      SELECT COUNT(*) AS total_filtered_count
+      FROM employees
+      ${filterQuery};
+    `;
+    
+    const dataQuery = `
+      SELECT id, name, salary, age
+      FROM employees
+      ${filterQuery}
+      ORDER BY id
       LIMIT $${values.length + 1} OFFSET $${values.length + 2};
     `;
+    
     values.push(parseInt(limit, 10), parseInt(offset, 10));
-    const result = await pool.query(query, values);
 
-    const total = result.rows.length > 0 ? parseInt(result.rows[0].total_count, 10) : 0;
-    const rows = result.rows.map(row => ({
+    // Execute both queries
+    const totalFilteredCountResult = await pool.query(countQuery, values.slice(0, values.length - 2));
+    const totalFilteredCount = parseInt(totalFilteredCountResult.rows[0].total_filtered_count, 10);
+    const totalPages = Math.ceil(totalFilteredCount / limit);
+
+    const dataResult = await pool.query(dataQuery, values);
+
+    const rows = dataResult.rows.map(row => ({
       id: row.id,
       name: row.name,
       salary: row.salary,
@@ -166,7 +169,8 @@ app.post('/api/employees', async (req, res) => {
 
     res.json({
       rows,
-      total,
+      totalFilteredCount,
+      totalPages
     });
   } catch (error) {
     console.error('Error fetching data:', error);
